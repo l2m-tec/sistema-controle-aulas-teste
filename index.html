@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Aulas</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --txt:#1c2330; --mut:#6b7585; --brand:#2f6fed; --bd:#e2e6ec; --err:#c0392b; --ok:#1e8e5a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161d; --card:#1b212b; --txt:#e8ecf2; --mut:#93a0b3; --brand:#5b8def; --bd:#2b3340; --err:#ff7b6b; --ok:#4cc38a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.sub { color:var(--mut); margin:0 0 20px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:16px; }
+  .kpi small { color:var(--mut); display:block; }
+  .kpi strong { font-size:24px; }
+  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:13px; color:var(--mut); gap:4px; }
+  input { font:inherit; padding:8px 10px; border:1px solid var(--bd); border-radius:8px; background:var(--bg); color:var(--txt); }
+  input:focus { outline:2px solid var(--brand); outline-offset:-1px; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--bd); background:var(--card); color:var(--txt); cursor:pointer; }
+  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  button.danger { color:var(--err); }
+  button:hover { filter:brightness(.95); }
+  .msg { min-height:22px; margin:10px 0 0; font-size:14px; }
+  .msg.err { color:var(--err); } .msg.ok { color:var(--ok); }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; margin:20px 0 10px; align-items:center; }
+  .bar input { flex:1; min-width:180px; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--bd); white-space:nowrap; }
+  th { color:var(--mut); font-weight:600; font-size:13px; }
+  td.num, th.num { text-align:right; }
+  td.act { text-align:right; }
+  td.act button { padding:4px 10px; font-size:13px; }
+  .empty { text-align:center; color:var(--mut); padding:24px; }
+  pre { white-space:pre-wrap; margin:0; font:13px/1.5 ui-monospace,Consolas,monospace; }
+  .foot { color:var(--mut); font-size:13px; margin-top:24px; }
+  a { color:var(--brand); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Controle de Aulas</h1>
+  <p class="sub">Alunos particulares: cadastro, valor mensal e relatório. Os dados ficam salvos neste navegador.</p>
+
+  <section class="kpis" aria-label="Resumo">
+    <div class="card kpi"><small>Alunos</small><strong id="kAlunos">0</strong></div>
+    <div class="card kpi"><small>Aulas por semana</small><strong id="kAulas">0</strong></div>
+    <div class="card kpi"><small>Total mensal estimado</small><strong id="kTotal">R$ 0,00</strong></div>
+  </section>
+
+  <section class="card">
+    <strong id="formTitulo">Cadastrar aluno</strong>
+    <form id="form" novalidate style="margin-top:10px">
+      <label>Nome<input id="nome" autocomplete="off"></label>
+      <label>Série<input id="serie" autocomplete="off"></label>
+      <label>Disciplina<input id="disciplina" autocomplete="off"></label>
+      <label>Valor da aula (R$)<input id="valor" inputmode="decimal" autocomplete="off"></label>
+      <label>Aulas por semana<input id="aulas" inputmode="numeric" autocomplete="off"></label>
+      <div style="display:flex;gap:8px">
+        <button class="primary" type="submit" id="btnSalvar">Cadastrar</button>
+        <button type="button" id="btnCancelar" hidden>Cancelar</button>
+      </div>
+    </form>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <div class="bar">
+    <input id="busca" type="search" placeholder="Buscar por nome, série ou disciplina" aria-label="Buscar">
+    <button id="btnRelatorio">Ver relatório</button>
+    <button id="btnCsv">Exportar CSV</button>
+    <button id="btnReset" class="danger">Restaurar exemplo</button>
+  </div>
+
+  <section class="card tablewrap">
+    <table>
+      <thead><tr>
+        <th>Nome</th><th>Série</th><th>Disciplina</th>
+        <th class="num">Valor/aula</th><th class="num">Aulas/sem.</th><th class="num">Mensal</th><th></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </section>
+
+  <section class="card" id="relatorio" hidden style="margin-top:16px"><pre id="relTxt"></pre></section>
+
+  <p class="foot">Regra: valor mensal = valor da aula × aulas por semana × 4. Interface web do projeto
+    <a href="https://github.com/david-oliveira-dev/sistema-controle-aulas">sistema-controle-aulas</a> (MIT, David Oliveira); lógica portada de <code>sistema_alunos.py</code>.</p>
+</main>
+
+<script>
+const SEMANAS_NO_MES = 4;
+const CHAVE = "controle-aulas:alunos";
+const EXEMPLO = [
+  {nome:"Ana", serie:"9º ano", disciplina:"Matemática", valor_aula:130, aulas_por_semana:2},
+  {nome:"João", serie:"8º ano", disciplina:"Ciências", valor_aula:120, aulas_por_semana:1},
+  {nome:"Maria", serie:"1ª série EM", disciplina:"Física", valor_aula:150, aulas_por_semana:1},
+  {nome:"Carlos", serie:"7º ano", disciplina:"Matemática", valor_aula:120, aulas_por_semana:2},
+  {nome:"Beatriz", serie:"2ª série EM", disciplina:"Física", valor_aula:150, aulas_por_semana:2},
+];
+const brl = n => n.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+const $ = id => document.getElementById(id);
+
+// ---- validação (mesmas regras do Aluno em sistema_alunos.py) ----
+function validar(d) {
+  const txt = (v, campo) => {
+    if (typeof v !== "string" || !v.trim()) throw new Error(`O campo '${campo}' não pode ficar vazio.`);
+    return v.trim();
+  };
+  const nome = txt(d.nome, "nome"), serie = txt(d.serie, "série"), disciplina = txt(d.disciplina, "disciplina");
+  const valor = Number(String(d.valor).replace(",", "."));
+  if (String(d.valor).trim() === "" || !Number.isFinite(valor)) throw new Error("O valor da aula precisa ser um número.");
+  if (valor <= 0) throw new Error("O valor da aula precisa ser maior que zero.");
+  const aulasTxt = String(d.aulas).trim();
+  if (!/^[+-]?\d+$/.test(aulasTxt)) throw new Error("As aulas por semana precisam ser um número inteiro.");
+  const aulas = parseInt(aulasTxt, 10);
+  if (aulas <= 0) throw new Error("As aulas por semana precisam ser maior que zero.");
+  return {nome, serie, disciplina, valor_aula:valor, aulas_por_semana:aulas};
+}
+const mensal = a => a.valor_aula * a.aulas_por_semana * SEMANAS_NO_MES;
+
+// ---- persistência ----
+let alunos = [];
+let editando = null; // índice em `alunos`
+function carregar() {
+  try { const s = localStorage.getItem(CHAVE); alunos = s ? JSON.parse(s) : structuredClone(EXEMPLO); }
+  catch { alunos = structuredClone(EXEMPLO); }
+}
+function salvar() { try { localStorage.setItem(CHAVE, JSON.stringify(alunos)); } catch {} }
+
+// ---- UI ----
+function msg(t, tipo) { const m = $("msg"); m.textContent = t; m.className = "msg " + (tipo || ""); }
+function render() {
+  const q = $("busca").value.trim().toLowerCase();
+  const tb = $("tbody"); tb.replaceChildren();
+  let n = 0;
+  alunos.forEach((a, i) => {
+    if (q && !`${a.nome} ${a.serie} ${a.disciplina}`.toLowerCase().includes(q)) return;
+    n++;
+    const tr = tb.insertRow();
+    [a.nome, a.serie, a.disciplina].forEach(v => tr.insertCell().textContent = v);
+    [brl(a.valor_aula), a.aulas_por_semana, brl(mensal(a))].forEach(v => {
+      const c = tr.insertCell(); c.textContent = v; c.className = "num";
+    });
+    const c = tr.insertCell(); c.className = "act";
+    const e = document.createElement("button"); e.textContent = "Editar"; e.onclick = () => editar(i);
+    const r = document.createElement("button"); r.textContent = "Remover"; r.className = "danger"; r.onclick = () => remover(i);
+    c.append(e, " ", r);
+  });
+  if (!n) { const c = tb.insertRow().insertCell(); c.colSpan = 7; c.className = "empty";
+    c.textContent = alunos.length ? "Nenhum aluno encontrado." : "Nenhum aluno cadastrado."; }
+  $("kAlunos").textContent = alunos.length;
+  $("kAulas").textContent = alunos.reduce((s, a) => s + a.aulas_por_semana, 0);
+  $("kTotal").textContent = brl(alunos.reduce((s, a) => s + mensal(a), 0));
+  if (!$("relatorio").hidden) relatorio();
+}
+function limparForm() {
+  ["nome","serie","disciplina","valor","aulas"].forEach(id => $(id).value = "");
+  editando = null; $("formTitulo").textContent = "Cadastrar aluno";
+  $("btnSalvar").textContent = "Cadastrar"; $("btnCancelar").hidden = true;
+}
+function editar(i) {
+  const a = alunos[i]; editando = i;
+  $("nome").value = a.nome; $("serie").value = a.serie; $("disciplina").value = a.disciplina;
+  $("valor").value = a.valor_aula; $("aulas").value = a.aulas_por_semana;
+  $("formTitulo").textContent = "Editando: " + a.nome; $("btnSalvar").textContent = "Salvar alterações";
+  $("btnCancelar").hidden = false; msg(""); $("nome").focus(); window.scrollTo({top:0, behavior:"smooth"});
+}
+function remover(i) {
+  if (!confirm(`Remover ${alunos[i].nome}?`)) return;
+  alunos.splice(i, 1); if (editando === i) limparForm(); salvar(); render(); msg("Aluno removido com sucesso!", "ok");
+}
+function relatorio() {
+  const L = ["RELATÓRIO DE ALUNOS", "=".repeat(40)];
+  if (!alunos.length) L.push("Nenhum aluno cadastrado.");
+  else {
+    alunos.forEach(a => L.push(`Nome: ${a.nome}`, `Série: ${a.serie}`, `Disciplina: ${a.disciplina}`,
+      `Valor por aula: ${brl(a.valor_aula)}`, `Aulas por semana: ${a.aulas_por_semana}`,
+      `Valor mensal: ${brl(mensal(a))}`, "-".repeat(40)));
+    L.push(`Total mensal estimado: ${brl(alunos.reduce((s, a) => s + mensal(a), 0))}`);
+  }
+  $("relTxt").textContent = L.join("\n"); $("relatorio").hidden = false;
+}
+
+$("form").addEventListener("submit", ev => {
+  ev.preventDefault();
+  try {
+    const d = validar({nome:$("nome").value, serie:$("serie").value, disciplina:$("disciplina").value,
+                       valor:$("valor").value, aulas:$("aulas").value});
+    const era = editando !== null;
+    if (era) alunos[editando] = d; else alunos.push(d);
+    salvar(); limparForm(); render();
+    msg(era ? "Aluno atualizado com sucesso!" : "Aluno cadastrado com sucesso!", "ok");
+  } catch (e) { msg(e.message, "err"); }
+});
+$("btnCancelar").onclick = () => { limparForm(); msg(""); };
+$("busca").oninput = render;
+$("btnRelatorio").onclick = () => { if ($("relatorio").hidden) relatorio(); else $("relatorio").hidden = true; };
+$("btnReset").onclick = () => {
+  if (!confirm("Substituir todos os dados pelos 5 alunos de exemplo?")) return;
+  alunos = structuredClone(EXEMPLO); salvar(); limparForm(); render(); msg("Dados de exemplo restaurados.", "ok");
+};
+$("btnCsv").onclick = () => {
+  const esc = v => `"${String(v).replaceAll('"', '""')}"`;
+  const linhas = [["nome","serie","disciplina","valor_aula","aulas_por_semana","valor_mensal"].join(";")]
+    .concat(alunos.map(a => [a.nome,a.serie,a.disciplina,a.valor_aula,a.aulas_por_semana,mensal(a)].map(esc).join(";")));
+  const url = URL.createObjectURL(new Blob(["﻿" + linhas.join("\n")], {type:"text/csv;charset=utf-8"}));
+  const l = document.createElement("a"); l.href = url; l.download = "alunos.csv"; l.click(); URL.revokeObjectURL(url);
+};
+
+carregar(); render();
+</script>
+</body>
+</html>
